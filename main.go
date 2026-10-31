@@ -29,22 +29,25 @@ const usage = `quickshare — share a file over HTTP with a one-time link
 
 Usage:
   quickshare <file> [flags]     share a file and print its link
-  quickshare list [--json]      show active shares
+  quickshare list [-j|--json]   show active shares
   quickshare revoke <token>     cancel a share (a unique prefix is enough)
   quickshare stop               stop the background daemon
 
 Share flags:
-  --max-downloads N   downloads allowed (default 1; 0 = unlimited, needs --expires)
-  --expires DURATION  e.g. 30m, 24h, 7d (default 24h; 0 = never, needs --max-downloads)
-  --wan host:port     public address used in the link (overrides config)
-  --bind host:port    address the daemon listens on (overrides config)
-  --interactive       prompt for options
-  --qr                show the link as a QR code (on stderr)
-  --qr-out PATH       save the QR code as a PNG
-  --json              print {url, token, expires_at, max_downloads}
-  --watch             follow the daemon log after sharing
-  --tls cert,key      serve over HTTPS with this certificate
-  --allow-forever     allow --max-downloads 0 together with --expires 0
+  -m, --max-downloads N   downloads allowed (default 1; 0 = unlimited, needs --expires)
+  -e, --expires DURATION  e.g. 30m, 24h, 7d (default 24h; 0 = never, needs --max-downloads)
+  -w, --wan host:port     public address used in the link (overrides config)
+  -b, --bind host:port    address the daemon listens on (overrides config)
+  -i, --interactive       prompt for options
+  -q, --qr                show the link as a QR code (on stderr)
+  -o, --qr-out PATH       save the QR code as a PNG
+  -j, --json              print {url, token, expires_at, max_downloads}
+  -f, --watch             follow the daemon log after sharing
+  -t, --tls cert,key      serve over HTTPS with this certificate
+      --allow-forever     allow --max-downloads 0 together with --expires 0
+
+Short flags take one or two dashes (-i and --i are the same). Combined
+short flags like -iq are not supported; write -i -q.
 
 The link is always the last line on stdout, so link=$(quickshare f.zip) works.
 Config: ~/.quickshare/config.toml (or $QUICKSHARE_HOME/config.toml)
@@ -123,6 +126,16 @@ func cmdShare(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	tlsFlag := fs.String("tls", "", "")
 	allowForever := fs.Bool("allow-forever", false, "")
 
+	// Short aliases. --allow-forever deliberately has none.
+	short := map[string]string{
+		"m": "max-downloads", "e": "expires", "w": "wan", "b": "bind",
+		"i": "interactive", "q": "qr", "o": "qr-out", "j": "json",
+		"f": "watch", "t": "tls",
+	}
+	for s, long := range short {
+		fs.Var(fs.Lookup(long).Value, s, "")
+	}
+
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		fmt.Fprintf(stderr, "quickshare: %v\n\n%s", err, usage)
@@ -133,7 +146,13 @@ func cmdShare(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	set := map[string]bool{}
-	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	fs.Visit(func(f *flag.Flag) {
+		if long, ok := short[f.Name]; ok {
+			set[long] = true
+		} else {
+			set[f.Name] = true
+		}
+	})
 
 	p, err := resolvePaths()
 	if err != nil {
@@ -418,6 +437,7 @@ func cmdList(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "output JSON")
+	fs.BoolVar(jsonOut, "j", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

@@ -33,26 +33,26 @@ On first run, quickshare writes a commented config file to `~/.quickshare/config
 
 ```text
 quickshare <file> [flags]     share a file and print its link
-quickshare list [--json]      show active shares
+quickshare list [-j|--json]   show active shares
 quickshare revoke <token>     cancel a share (a unique prefix of 6+ characters is enough)
 quickshare stop               stop the background daemon
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--max-downloads N` | Completed downloads allowed. Default 1. `0` = unlimited (requires an expiry). |
-| `--expires DURATION` | `30m`, `24h`, `7d`, … Default 24h. `0` = never (requires a download limit). |
+| `-m`, `--max-downloads N` | Completed downloads allowed. Default 1. `0` = unlimited (requires an expiry). |
+| `-e`, `--expires DURATION` | `30m`, `24h`, `7d`, … Default 24h. `0` = never (requires a download limit). |
 | `--allow-forever` | Allow `--max-downloads 0 --expires 0` (a link that never dies). |
-| `--wan host:port` | Public address used in the link (overrides config). |
-| `--bind host:port` | Address the daemon listens on (overrides config). |
-| `--interactive` | Prompt for the options. |
-| `--qr` | Show the link as a QR code in the terminal. |
-| `--qr-out PATH` | Save the QR code as a PNG. |
-| `--json` | Print `{url, token, expires_at, max_downloads}`. |
-| `--watch` | Follow the daemon log after sharing (Ctrl-C stops watching; the share keeps going). |
-| `--tls cert,key` | Serve over HTTPS. |
+| `-w`, `--wan host:port` | Public address used in the link (overrides config). |
+| `-b`, `--bind host:port` | Address the daemon listens on (overrides config). |
+| `-i`, `--interactive` | Prompt for the options. |
+| `-q`, `--qr` | Show the link as a QR code in the terminal. |
+| `-o`, `--qr-out PATH` | Save the QR code as a PNG. |
+| `-j`, `--json` | Print `{url, token, expires_at, max_downloads}`. |
+| `-f`, `--watch` | Follow the daemon log after sharing (Ctrl-C stops watching; the share keeps going). |
+| `-t`, `--tls cert,key` | Serve over HTTPS. |
 
-Flags can come before or after the file name. To share a file literally named `list`, `stop` or `revoke`, use `quickshare -- list` or `quickshare ./list`.
+Short flags work with one or two dashes (`-i` and `--i` are the same), but can't be combined: write `-i -q`, not `-iq`. `--allow-forever` has no short form on purpose. Flags can come before or after the file name. Example: `quickshare -m 3 -e 2h -q report.pdf`. To share a file literally named `list`, `stop` or `revoke`, use `quickshare -- list` or `quickshare ./list`.
 
 **Scripting.** stdout carries only the link (or the JSON with `--json`). Warnings, the summary and the QR code all go to stderr, so this works:
 

@@ -316,3 +316,28 @@ func TestCLIBindMismatchWarning(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIShortFlags(t *testing.T) {
+	e := newCLIEnv(t)
+	png := filepath.Join(t.TempDir(), "qr.png")
+	out, errOut, code := e.run(t, "-w", e.addr, "--b", e.addr, "-m", "3", "-e", "2h", "-j", "-o", png, testFile(t, "x"))
+	if code != 0 {
+		t.Fatal(errOut)
+	}
+	var v struct {
+		MaxDownloads int `json:"max_downloads"`
+	}
+	if err := json.Unmarshal([]byte(out), &v); err != nil || v.MaxDownloads != 3 {
+		t.Fatalf("short flags not applied: %q %v", out, err)
+	}
+	if !fileExists(png) {
+		t.Fatal("-o did not write the QR PNG")
+	}
+	if out, _, code := e.run(t, "list", "-j"); code != 0 || !strings.HasPrefix(out, "[") {
+		t.Fatalf("list -j: %d %q", code, out)
+	}
+	// -m 0 -e 0 is still refused without the long --allow-forever.
+	if _, errOut, code := e.run(t, testFile(t, "y"), "-w", e.addr, "-b", e.addr, "-m", "0", "-e", "0"); code == 0 {
+		t.Fatalf("forever share accepted via short flags: %s", errOut)
+	}
+}
