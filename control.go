@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -72,25 +73,44 @@ func daemonStatus(p Paths) (DaemonStatus, error) {
 	return *resp.Status, nil
 }
 
-// resolveToken finds a share by full token or by a unique prefix of at
-// least 6 characters.
-func resolveToken(shares []Share, q string) (string, error) {
+// resolveShare finds a share by its number (as `list` shows it, "4" or
+// "#4"), by full token, or by a unique token prefix of at least 6
+// characters. An argument of digits only is always a number.
+func resolveShare(shares []Share, q string) (Share, error) {
 	q = strings.TrimSuffix(strings.TrimSpace(q), "…")
-	var matches []string
+	if n, ok := shareNumber(q); ok {
+		for _, sh := range shares {
+			if sh.Number == n {
+				return sh, nil
+			}
+		}
+		return Share{}, fmt.Errorf("no active share #%d; `ghostshare list` shows the current numbers", n)
+	}
+	var matches []Share
 	for _, sh := range shares {
 		if sh.Token == q {
-			return q, nil
+			return sh, nil
 		}
 		if len(q) >= 6 && strings.HasPrefix(sh.Token, q) {
-			matches = append(matches, sh.Token)
+			matches = append(matches, sh)
 		}
 	}
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("no share matches %q", q)
+		return Share{}, fmt.Errorf("no share matches %q", q)
 	case 1:
 		return matches[0], nil
 	default:
-		return "", fmt.Errorf("%q matches %d shares; use more characters", q, len(matches))
+		return Share{}, fmt.Errorf("%q matches %d shares; use more characters", q, len(matches))
 	}
+}
+
+// shareNumber parses "4" or "#4".
+func shareNumber(q string) (int, bool) {
+	q = strings.TrimPrefix(q, "#")
+	if q == "" || len(q) > 9 || strings.Trim(q, "0123456789") != "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(q)
+	return n, err == nil && n > 0
 }

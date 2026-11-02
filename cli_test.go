@@ -174,6 +174,7 @@ func TestCLIJSON(t *testing.T) {
 	out := e.share(t, testFile(t, "x"), "--json", "--max-downloads", "3", "--expires", "1h")
 	var v struct {
 		URL          string  `json:"url"`
+		Number       int     `json:"number"`
 		Token        string  `json:"token"`
 		ExpiresAt    *string `json:"expires_at"`
 		MaxDownloads int     `json:"max_downloads"`
@@ -181,7 +182,7 @@ func TestCLIJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &v); err != nil {
 		t.Fatalf("%q: %v", out, err)
 	}
-	if v.MaxDownloads != 3 || v.ExpiresAt == nil || !strings.Contains(v.URL, v.Token) {
+	if v.MaxDownloads != 3 || v.ExpiresAt == nil || !strings.Contains(v.URL, v.Token) || v.Number != 1 {
 		t.Fatalf("unexpected JSON: %+v", v)
 	}
 	exp, err := time.Parse(time.RFC3339, *v.ExpiresAt)
@@ -267,6 +268,11 @@ func TestCLICrashRestoresShares(t *testing.T) {
 	if len(shares) != 2 {
 		t.Fatalf("after restart: %d shares, want 2: %+v", len(shares), shares)
 	}
+	// Numbers survive the crash and aren't repeated: first was #1, the
+	// expired share #2, so the share made at restart is #3.
+	if shares[0].Number != 1 || shares[1].Number != 3 {
+		t.Errorf("numbers after restart: #%d, #%d; want #1, #3", shares[0].Number, shares[1].Number)
+	}
 	for _, l := range []string{first, second} {
 		if code, _ := download(t, l); code != 200 {
 			t.Fatalf("download %s after restart: %d", l, code)
@@ -293,7 +299,7 @@ func TestCLIStopListRevoke(t *testing.T) {
 	if s := e.list(t); len(s) != 1 || s[0].Token != tok {
 		t.Fatalf("offline list: %+v", s)
 	}
-	if out, errOut, code := e.run(t, "revoke", tok[:10]); code != 0 || !strings.Contains(out, tok) {
+	if out, errOut, code := e.run(t, "revoke", tok[:10]); code != 0 || out != "revoked #1 file.txt\n" {
 		t.Fatalf("revoke: %d %q %q", code, out, errOut)
 	}
 	if s := e.list(t); len(s) != 0 {
@@ -339,5 +345,64 @@ func TestCLIShortFlags(t *testing.T) {
 	// -m 0 -e 0 is still refused without the long --allow-forever.
 	if _, errOut, code := e.run(t, testFile(t, "y"), "-w", e.addr, "-b", e.addr, "-m", "0", "-e", "0"); code == 0 {
 		t.Fatalf("forever share accepted via short flags: %s", errOut)
+	}
+}
+
+// Shares are numbered as they are added; list shows the number; revoke
+// takes the number. Numbers only go up while anything is shared and start
+// again at 1 when nothing is.
+func TestCLIShareNumbersAndRevokeByNumber(t *testing.T) {
+	e := newCLIEnv(t)
+	dir := t.TempDir()
+	links := map[int]string{}
+	for i, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		f := filepath.Join(dir, name)
+		os.WriteFile(f, []byte(name), 0o644)
+		out, errOut, code := e.run(t, f, "--wan", e.addr, "--bind", e.addr)
+		if code != 0 {
+			t.Fatal(errOut)
+		}
+		if want := fmt.Sprintf("sharing %s as #%d ", name, i+1); !strings.Contains(errOut, want) {
+			t.Errorf("stderr is missing %q:\n%s", want, errOut)
+		}
+		links[i+1] = strings.TrimSpace(out)
+	}
+
+	if out, errOut, code := e.run(t, "revoke", "2"); code != 0 || out != "revoked #2 b.txt\n" {
+		t.Fatalf("revoke 2: %d %q %q", code, out, errOut)
+	}
+	if code, _ := download(t, links[2]); code != 410 {
+		t.Fatalf("revoked share: %d, want 410", code)
+	}
+	if _, errOut, code := e.run(t, "revoke", "2"); code == 0 || !strings.Contains(errOut, "no active share #2") {
+		t.Fatalf("revoking #2 twice: %d %q", code, errOut)
+	}
+	d := filepath.Join(dir, "d.txt")
+	os.WriteFile(d, []byte("d"), 0o644)
+	e.share(t, d)
+
+	out, errOut, code := e.run(t, "list")
+	if code != 0 {
+		t.Fatal(errOut)
+	}
+	rows := strings.Split(strings.TrimSpace(out), "\n")
+	if len(rows) != 4 || strings.Fields(rows[0])[0] != "#" || strings.Fields(rows[0])[1] != "FILE" {
+		t.Fatalf("list:\n%s", out)
+	}
+	for i, want := range []string{"1 a.txt", "3 c.txt", "4 d.txt"} {
+		f := strings.Fields(rows[i+1])
+		if f[0] != strings.Fields(want)[0] || !strings.HasSuffix(f[1], strings.Fields(want)[1]) {
+			t.Errorf("list row %d = %q, want %q", i+1, rows[i+1], want)
+		}
+	}
+
+	for _, n := range []string{"#1", "3", "4"} {
+		if _, errOut, code := e.run(t, "revoke", n); code != 0 {
+			t.Fatalf("revoke %s: %s", n, errOut)
+		}
+	}
+	e.share(t, d)
+	if s := e.list(t); len(s) != 1 || s[0].Number != 1 {
+		t.Fatalf("first share with nothing active: %+v, want #1", s)
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+	"unicode"
 )
 
 const version = "0.1.0"
@@ -30,7 +31,7 @@ const usage = `quickshare — share a file over HTTP with a one-time link
 Usage:
   quickshare <file> [flags]     share a file and print its link
   quickshare list [-j|--json]   show active shares
-  quickshare revoke <token>     cancel a share (a unique prefix is enough)
+  quickshare revoke <number>    cancel a share (its # in quickshare list)
   quickshare stop               stop the background daemon
 
 Share flags:
@@ -293,10 +294,11 @@ func cmdShare(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if *jsonOut {
 		out := struct {
 			URL          string  `json:"url"`
+			Number       int     `json:"number"`
 			Token        string  `json:"token"`
 			ExpiresAt    *string `json:"expires_at"`
 			MaxDownloads int     `json:"max_downloads"`
-		}{URL: link, Token: sh.Token, MaxDownloads: sh.MaxDownloads}
+		}{URL: link, Number: sh.Number, Token: sh.Token, MaxDownloads: sh.MaxDownloads}
 		if sh.ExpiresAt != 0 {
 			s := time.Unix(sh.ExpiresAt, 0).UTC().Format(time.RFC3339)
 			out.ExpiresAt = &s
@@ -304,7 +306,7 @@ func cmdShare(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		enc := json.NewEncoder(stdout)
 		enc.Encode(out)
 	} else {
-		fmt.Fprintf(stderr, "sharing %s (%s) · %s\n", filepath.Base(path), humanSize(fi.Size()), describeLimits(sh))
+		fmt.Fprintf(stderr, "sharing %s as #%d (%s) · %s\n", filepath.Base(path), sh.Number, humanSize(fi.Size()), describeLimits(sh))
 		fmt.Fprintln(stdout, link)
 	}
 
@@ -476,17 +478,40 @@ func cmdList(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "TOKEN\tFILE\tDOWNLOADS\tEXPIRES")
+	fmt.Fprintln(tw, "#\tFILE\tDOWNLOADS\tEXPIRES")
 	now := time.Now()
 	for _, sh := range shares {
 		exp := "never"
 		if sh.ExpiresAt != 0 {
 			exp = "in " + humanDuration(time.Unix(sh.ExpiresAt, 0).Sub(now))
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", sh.Token, sh.Path, countString(sh), exp)
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", sh.Number, tableSafe(tildePath(sh.Path)), countString(sh), exp)
 	}
 	tw.Flush()
 	return 0
+}
+
+// tildePath shortens a path under the home folder to ~/...
+func tildePath(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if rel, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
+		return "~" + string(filepath.Separator) + rel
+	}
+	return path
+}
+
+// tableSafe keeps a filename from breaking the list table or the terminal:
+// tabs, newlines and other control characters become "?".
+func tableSafe(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+			return '?'
+		}
+		return r
+	}, s)
 }
 
 // offlineShares reads the database directly when no daemon is running.
@@ -515,7 +540,7 @@ func offlineShares(p Paths) ([]Share, error) {
 
 func cmdRevoke(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: quickshare revoke <token>")
+		fmt.Fprintln(stderr, "usage: quickshare revoke <number>   (the # column of `quickshare list`, or a 6+ character token prefix)")
 		return 2
 	}
 	p, err := resolvePaths()
@@ -524,39 +549,36 @@ func cmdRevoke(args []string, stdout, stderr io.Writer) int {
 	}
 	resp, err := ctrlCall(p, ctrlRequest{Op: "revoke", Token: args[0]})
 	if errors.Is(err, errDaemonDown) {
-		tok, err := revokeOffline(p, args[0])
+		sh, err := revokeOffline(p, args[0])
 		if err != nil {
 			return errorf(stderr, "%v", err)
 		}
-		fmt.Fprintf(stdout, "revoked %s\n", tok)
+		fmt.Fprintf(stdout, "revoked #%d %s\n", sh.Number, filepath.Base(sh.Path))
 		return 0
 	}
 	if err != nil {
 		return errorf(stderr, "%v", err)
 	}
-	fmt.Fprintf(stdout, "revoked %s\n", resp.Share.Token)
+	fmt.Fprintf(stdout, "revoked #%d %s\n", resp.Share.Number, filepath.Base(resp.Share.Path))
 	return 0
 }
 
-func revokeOffline(p Paths, q string) (string, error) {
-	if !fileExists(p.DB) {
-		return "", fmt.Errorf("no share matches %q", q)
+func revokeOffline(p Paths, q string) (Share, error) {
+	live, err := offlineShares(p)
+	if err != nil {
+		return Share{}, err
+	}
+	sh, err := resolveShare(live, q)
+	if err != nil {
+		return Share{}, err
 	}
 	st, err := openStore(p.DB)
 	if err != nil {
-		return "", err
+		return Share{}, err
 	}
 	defer st.Close()
-	all, err := st.List()
-	if err != nil {
-		return "", err
-	}
-	tok, err := resolveToken(all, q)
-	if err != nil {
-		return "", err
-	}
-	_, err = st.Delete(tok)
-	return tok, err
+	_, err = st.Delete(sh.Token)
+	return sh, err
 }
 
 func cmdStop(stdout, stderr io.Writer) int {
@@ -585,7 +607,7 @@ func cmdStop(stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "daemon stopped (pid %d)\n", st.PID)
 	if st.Active > 0 {
-		fmt.Fprintf(stderr, "%d share(s) kept: they come back online next time the daemon starts. Use `quickshare revoke <token>` to cancel them.\n", st.Active)
+		fmt.Fprintf(stderr, "%d share(s) kept: they come back online next time the daemon starts. Use `quickshare revoke <number>` to cancel them.\n", st.Active)
 	}
 	return 0
 }

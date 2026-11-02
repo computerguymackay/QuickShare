@@ -34,7 +34,7 @@ On first run, quickshare writes a commented config file to `~/.quickshare/config
 ```text
 quickshare <file> [flags]     share a file and print its link
 quickshare list [-j|--json]   show active shares
-quickshare revoke <token>     cancel a share (a unique prefix of 6+ characters is enough)
+quickshare revoke <number>    cancel a share by its # in `list` (a 6+ character token prefix also works)
 quickshare stop               stop the background daemon
 ```
 
@@ -174,6 +174,7 @@ quickshare counts **completed downloads**:
 - `quickshare <file>` starts a background daemon if none is running, hands it the share, and exits. One daemon serves all your shares.
 - A share ends when it reaches its download limit, expires, is revoked, or its file is deleted. Ended links return `410 Gone`.
 - When no shares are active, the daemon waits 45 seconds (so a new share can arrive), then exits. Expiry is checked every 10 seconds, and downloads in progress are never cut off by an automatic shutdown.
+- Every share gets a number when you share it (`sharing report.pdf as #3`). `quickshare list` shows it in the `#` column and `quickshare revoke 3` ends that share. Numbers only go up while anything is being shared, so a number never points at a different share than the one you saw; gaps are shares that have ended. Once nothing is shared, numbering starts again at 1. Shares keep their number across `quickshare stop` and restarts. `--json` includes `"number"`.
 - Shares are saved in `~/.quickshare/state.db` (SQLite). If the machine reboots or the daemon crashes, the next `quickshare <file>` starts a new daemon, which brings back every share that is still valid and drops expired ones and ones whose file is gone. `quickshare list` and `quickshare revoke` work while the daemon is down.
 - `quickshare stop` stops the daemon immediately but **keeps** unfinished shares; they come back the next time the daemon starts. To kill a link for good, use `quickshare revoke`.
 - Running several `quickshare` commands at once is safe: a lock file ensures only one daemon starts.

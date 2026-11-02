@@ -303,7 +303,10 @@ func (d *Daemon) handleControl(req ctrlRequest) ctrlResponse {
 		if err := d.store.Add(sh); err != nil {
 			return fail("save share: %v", err)
 		}
-		d.log.Printf("share %s added: %s (%s)", shortToken(tok), filepath.Base(sh.Path), describeLimits(sh))
+		if saved, err := d.store.Get(tok); err == nil {
+			sh.Number = saved.Number // assigned by Add
+		}
+		d.log.Printf("share #%d %s added: %s (%s)", sh.Number, shortToken(tok), filepath.Base(sh.Path), describeLimits(sh))
 		d.evaluate()
 		return ctrlResponse{OK: true, Share: &sh}
 
@@ -326,14 +329,23 @@ func (d *Daemon) handleControl(req ctrlRequest) ctrlResponse {
 		if err != nil {
 			return fail("%v", err)
 		}
-		tok, err := resolveToken(all, req.Token)
+		// Only active shares: an ended share that hasn't been pruned yet may
+		// share its number with a newer one.
+		now := time.Now()
+		var live []Share
+		for _, sh := range all {
+			if sh.Active(now) {
+				live = append(live, sh)
+			}
+		}
+		target, err := resolveShare(live, req.Token)
 		if err != nil {
 			return fail("%v", err)
 		}
-		d.store.Delete(tok)
-		d.log.Printf("share %s revoked", shortToken(tok))
+		d.store.Delete(target.Token)
+		d.log.Printf("share #%d %s revoked", target.Number, shortToken(target.Token))
 		d.evaluate()
-		return ctrlResponse{OK: true, Share: &Share{Token: tok}}
+		return ctrlResponse{OK: true, Share: &target}
 
 	case "stop":
 		return ctrlResponse{OK: true}
