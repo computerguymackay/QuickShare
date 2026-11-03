@@ -84,7 +84,7 @@ func resolveShare(shares []Share, q string) (Share, error) {
 				return sh, nil
 			}
 		}
-		return Share{}, fmt.Errorf("no active share #%d; `ghostshare list` shows the current numbers", n)
+		return Share{}, fmt.Errorf("no active share #%d; `quickshare list` shows the current numbers", n)
 	}
 	var matches []Share
 	for _, sh := range shares {
