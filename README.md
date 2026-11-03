@@ -13,6 +13,16 @@ quickshare needs a machine that the internet can reach, such as a VPS, a server 
 
 ## Install and first run
 
+Download a binary for your platform from the [Releases](https://github.com/computerguymackay/QuickShare/releases) page, unpack it, and put `quickshare` on your `PATH`:
+
+```sh
+tar xzf quickshare_*_linux_amd64.tar.gz
+sudo mv quickshare_*_linux_amd64/quickshare /usr/local/bin/
+quickshare version
+```
+
+Or build it with Go:
+
 ```sh
 go install github.com/computerguymackay/quickshare@latest
 # or, from a checkout:

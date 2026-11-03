@@ -18,13 +18,25 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"text/tabwriter"
 	"time"
 	"unicode"
 )
 
-const version = "0.1.0"
+// version is set at release build time with -ldflags "-X main.version=...".
+// For `go install ...@vX.Y.Z` builds it falls back to the module version.
+var version = "dev"
+
+func init() {
+	if version != "dev" {
+		return
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && strings.HasPrefix(bi.Main.Version, "v") {
+		version = strings.TrimPrefix(bi.Main.Version, "v")
+	}
+}
 
 const usage = `quickshare — share a file over HTTP with a one-time link
 
