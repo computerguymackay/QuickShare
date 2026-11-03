@@ -11,6 +11,14 @@ http://203.0.113.5:8443/q3V9xG0b1mZ7TzPq4kLwYc2A/report.pdf
 
 quickshare needs a machine that the internet can reach, such as a VPS, a server with a public IP, or a home machine with a port forwarded on the router. It does not do NAT traversal.
 
+## Why
+
+I wanted to send a file to a friend. It was too big to email, so the usual answer was to upload it somewhere and send them a link. But I don't use Dropbox, and I didn't want to put it in my Google Drive. That meant signing up for something, uploading the file to someone else's server, managing sharing settings, and remembering to delete it afterwards, just so one person could download one file.
+
+Why should something so simple be so complicated?
+
+My machine is already on the internet. quickshare serves the file directly from it: one command gives you a link, your friend downloads the file, and the link stops working. There's no account to create, no copy left on someone else's server, and nothing to clean up. The background server starts when you share and shuts itself down when you're done.
+
 ## Install and first run
 
 Download a binary for your platform from the [Releases](https://github.com/computerguymackay/QuickShare/releases) page, unpack it, and put `quickshare` on your `PATH`:
