@@ -1,5 +1,8 @@
 # quickshare
 
+[![Latest release](https://img.shields.io/github/v/release/computerguymackay/QuickShare)](https://github.com/computerguymackay/QuickShare/releases/latest)
+[![License](https://img.shields.io/github/license/computerguymackay/QuickShare)](LICENSE)
+
 Share a file from your machine with one command and one link. The link stops working after a set number of downloads or a set time. Nothing in between: no accounts, no relay, no third-party service. The person downloading needs only a browser or `curl`.
 
 ```console
